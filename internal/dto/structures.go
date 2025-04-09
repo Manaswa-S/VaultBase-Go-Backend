@@ -23,7 +23,7 @@ type JWTTokens struct {
 
 type SignupData struct {
 	Email string
-	Password string
+	ClerkID string
 }
 
 type LoginData struct {
@@ -40,25 +40,38 @@ type LoginResponse struct {
 
 
 type NewProject struct {
-	Name string
+	Name string	`json:"name"`
 	// TODO: add other things too
-	Cache bool
-	Storage bool
+	Cache bool `json:"cache"`
+	Storage bool `json:"storage"`
 }
 
 type NewProjectResp struct {
-	ServiceUUID string
-	KeyInfo *APIKeyResponse
+	ServiceUUID string `json:"id"`
+	ServiceName string	`json:"name"`
+	ServiceCreatedAt int64	`json:"createdat"`
+	KeyInfo *APIKeyResponse	`json:"keyinfo"`
 }
 
 type APIKeyResponse struct {
-	ID string
-	Key string
-	CreatedAt int64
-	ExpiresAt int64
-	Cache bool
-	Storage bool
-}	
+	ID string	`json:"id"`
+	Key string	`json:"key"`
+	CreatedAt int64 `json:"createdat"`
+	ExpiresAt int64	`json:"expiresat"`
+	Cache bool	`json:"cache"`
+	Storage bool `json:"storage"`
+}		
+
+
+type StorageData struct {
+	Scope int64
+	Interval int64
+	XParts int64
+	XTime []int64
+	YFreq []int64
+	XTimeStr []string
+}
+
 
 
 

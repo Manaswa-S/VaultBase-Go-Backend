@@ -1,7 +1,13 @@
 
 
+-- name: CheckUserExistence :one
+SELECT
+    COUNT(users.user_id)
+FROM users
+WHERE users.clerk_id = $1;
+
 -- name: SignupUser :exec
-INSERT INTO users (email, password, role)
+INSERT INTO users (email, role, clerk_id)
 VALUES ($1, $2, $3);
 
 
@@ -75,6 +81,33 @@ WHERE services.sid = $1;
 
 
 
+-- name: GetAllProjects :many
+SELECT
+    services.service_uuid,
+    services.created_at,
+    services.name,
+
+    keys.key,
+    keys.created_at,
+    keys.updated_at,
+    keys.cache,
+    keys.storage,
+    keys.expires_at,
+    keys.id
+FROM services
+LEFT JOIN keys ON services.key_id = keys.key_id
+WHERE services.user_id = $1;
+
+
+
+-- name: GetServiceIDFromAPIKey :one
+SELECT
+    services.sid
+FROM services
+LEFT JOIN keys ON services.key_id = keys.key_id
+WHERE keys.key = $1;
+
+
 
 -- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 -- CACHE QUERIES
@@ -93,5 +126,40 @@ SELECT
     users.user_uiid,
     users.confirmed
 FROM keys
-JOIN users ON keys.user_id = users.user_id 
+JOIN services ON keys.key_id = services.key_id
+JOIN users ON users.user_id = services.user_id
 WHERE keys.key = $1;
+
+
+
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- Data Analytics
+
+
+
+-- -- name: GetLatestStorage :one
+-- SELECT 
+--     storage.last_up,
+--     storage.up_count,
+--     storage.last_down,
+--     storage.down_count
+-- FROM storage 
+-- WHERE storage.service_id = $1
+-- ORDER BY storage.last_up DESC
+-- LIMIT 1;
+
+
+-- name: InsertStorageData :exec
+INSERT INTO storage (service_id, upload, download, created_at) 
+VALUES ($1, $2, $3, $4);
+
+
+-- name: GetAllStorageData :many
+SELECT
+    storage.upload,
+    storage.download,
+    storage.created_at
+FROM storage
+WHERE storage.service_id = $1;

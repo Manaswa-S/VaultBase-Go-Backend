@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const checkUserExistence = `-- name: CheckUserExistence :one
+SELECT
+    COUNT(users.user_id)
+FROM users
+WHERE users.clerk_id = $1
+`
+
+func (q *Queries) CheckUserExistence(ctx context.Context, clerkID string) (int64, error) {
+	row := q.db.QueryRow(ctx, checkUserExistence, clerkID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteKey = `-- name: DeleteKey :exec
 DELETE FROM keys
 WHERE keys.key_id = $1
@@ -29,6 +43,103 @@ WHERE services.sid = $1
 func (q *Queries) DeleteService(ctx context.Context, sid int64) error {
 	_, err := q.db.Exec(ctx, deleteService, sid)
 	return err
+}
+
+const getAllProjects = `-- name: GetAllProjects :many
+SELECT
+    services.service_uuid,
+    services.created_at,
+    services.name,
+
+    keys.key,
+    keys.created_at,
+    keys.updated_at,
+    keys.cache,
+    keys.storage,
+    keys.expires_at,
+    keys.id
+FROM services
+LEFT JOIN keys ON services.key_id = keys.key_id
+WHERE services.user_id = $1
+`
+
+type GetAllProjectsRow struct {
+	ServiceUuid pgtype.UUID
+	CreatedAt   pgtype.Timestamptz
+	Name        string
+	Key         pgtype.Text
+	CreatedAt_2 pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	Cache       pgtype.Bool
+	Storage     pgtype.Bool
+	ExpiresAt   pgtype.Int8
+	ID          pgtype.Text
+}
+
+func (q *Queries) GetAllProjects(ctx context.Context, userID int64) ([]GetAllProjectsRow, error) {
+	rows, err := q.db.Query(ctx, getAllProjects, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllProjectsRow
+	for rows.Next() {
+		var i GetAllProjectsRow
+		if err := rows.Scan(
+			&i.ServiceUuid,
+			&i.CreatedAt,
+			&i.Name,
+			&i.Key,
+			&i.CreatedAt_2,
+			&i.UpdatedAt,
+			&i.Cache,
+			&i.Storage,
+			&i.ExpiresAt,
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllStorageData = `-- name: GetAllStorageData :many
+SELECT
+    storage.upload,
+    storage.download,
+    storage.created_at
+FROM storage
+WHERE storage.service_id = $1
+`
+
+type GetAllStorageDataRow struct {
+	Upload    bool
+	Download  bool
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetAllStorageData(ctx context.Context, serviceID int64) ([]GetAllStorageDataRow, error) {
+	rows, err := q.db.Query(ctx, getAllStorageData, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllStorageDataRow
+	for rows.Next() {
+		var i GetAllStorageDataRow
+		if err := rows.Scan(&i.Upload, &i.Download, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getServiceCountForUserID = `-- name: GetServiceCountForUserID :one
@@ -71,6 +182,21 @@ func (q *Queries) GetServiceData(ctx context.Context, name string) (GetServiceDa
 	var i GetServiceDataRow
 	err := row.Scan(&i.Sid, &i.UserID, &i.KeyID)
 	return i, err
+}
+
+const getServiceIDFromAPIKey = `-- name: GetServiceIDFromAPIKey :one
+SELECT
+    services.sid
+FROM services
+LEFT JOIN keys ON services.key_id = keys.key_id
+WHERE keys.key = $1
+`
+
+func (q *Queries) GetServiceIDFromAPIKey(ctx context.Context, key string) (int64, error) {
+	row := q.db.QueryRow(ctx, getServiceIDFromAPIKey, key)
+	var sid int64
+	err := row.Scan(&sid)
+	return sid, err
 }
 
 const getUserData = `-- name: GetUserData :one
@@ -126,7 +252,8 @@ SELECT
     users.user_uiid,
     users.confirmed
 FROM keys
-JOIN users ON keys.user_id = users.user_id 
+JOIN services ON keys.key_id = services.key_id
+JOIN users ON users.user_id = services.user_id
 WHERE keys.key = $1
 `
 
@@ -226,19 +353,60 @@ func (q *Queries) InsertNewService(ctx context.Context, arg InsertNewServicePara
 	return service_uuid, err
 }
 
+const insertStorageData = `-- name: InsertStorageData :exec
+
+
+
+
+
+INSERT INTO storage (service_id, upload, download, created_at) 
+VALUES ($1, $2, $3, $4)
+`
+
+type InsertStorageDataParams struct {
+	ServiceID int64
+	Upload    bool
+	Download  bool
+	CreatedAt pgtype.Timestamptz
+}
+
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// Data Analytics
+// -- name: GetLatestStorage :one
+// SELECT
+//
+//	storage.last_up,
+//	storage.up_count,
+//	storage.last_down,
+//	storage.down_count
+//
+// FROM storage
+// WHERE storage.service_id = $1
+// ORDER BY storage.last_up DESC
+// LIMIT 1;
+func (q *Queries) InsertStorageData(ctx context.Context, arg InsertStorageDataParams) error {
+	_, err := q.db.Exec(ctx, insertStorageData,
+		arg.ServiceID,
+		arg.Upload,
+		arg.Download,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const signupUser = `-- name: SignupUser :exec
-INSERT INTO users (email, password, role)
+INSERT INTO users (email, role, clerk_id)
 VALUES ($1, $2, $3)
 `
 
 type SignupUserParams struct {
-	Email    string
-	Password string
-	Role     int64
+	Email   string
+	Role    int64
+	ClerkID string
 }
 
 func (q *Queries) SignupUser(ctx context.Context, arg SignupUserParams) error {
-	_, err := q.db.Exec(ctx, signupUser, arg.Email, arg.Password, arg.Role)
+	_, err := q.db.Exec(ctx, signupUser, arg.Email, arg.Role, arg.ClerkID)
 	return err
 }
 

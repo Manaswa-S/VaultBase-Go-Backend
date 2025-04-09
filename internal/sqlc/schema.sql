@@ -45,3 +45,18 @@ CREATE TABLE IF NOT EXISTS public.keys
     id text COLLATE pg_catalog."default" NOT NULL,
     CONSTRAINT keys_pkey PRIMARY KEY (key_id)
 );
+
+CREATE TABLE IF NOT EXISTS public.storage
+(
+    str_id bigint NOT NULL DEFAULT nextval('storage_storage_id_seq'::regclass),
+    service_id bigint NOT NULL,
+    upload boolean NOT NULL DEFAULT false,
+    download boolean NOT NULL DEFAULT false,
+    created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT storage_pkey PRIMARY KEY (str_id),
+    CONSTRAINT services_storage_service_id_fkey FOREIGN KEY (service_id)
+        REFERENCES public.services (sid) MATCH SIMPLE
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+        NOT VALID
+);

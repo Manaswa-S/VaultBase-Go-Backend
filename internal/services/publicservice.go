@@ -3,10 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/user"
@@ -14,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 	"main.go/internal/config"
 	"main.go/internal/const/errs"
 	"main.go/internal/dto"
@@ -97,123 +93,60 @@ func (s *PublicService) ClerkVerify(ctx *gin.Context, clerkId string) (string, e
 	return userData.ID, nil
 }
 
+func (s *PublicService) userIsServiceOwner(ctx *gin.Context, userID int64, servicename string) (*sqlc.GetServiceDataRow, *errs.Error) {
+	
+	serviceData, err := s.queries.GetServiceData(ctx, servicename)
+	if err != nil {
+		// TODO: process pgerr
+		return nil, &errs.Error{}
+	}	
+
+	// 2) check if user is owner of service
+	if serviceData.UserID != userID {
+		return nil, &errs.Error{}	
+	}
+	return &serviceData, nil
+}
+
 
 // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 
-func (s *PublicService) SignupPost(ctx *gin.Context, signupData *dto.SignupData) (*errs.Error) {
+func (s *PublicService) NewUser(ctx *gin.Context, signupData *dto.SignupData) (bool, *errs.Error) {
 
-	if signupData.Email == "" || signupData.Password == "" {
-		return &errs.Error{
-			Type: errs.PreconditionFailed,
-			Message: "The email and password cannot be empty. Try again!",
-			ToRespondWith: true,
-		}
-	}
-
-	passStr := signupData.Password
-
-	passLen := utf8.RuneCountInString(passStr)
-	if passLen <= 12 || passLen >= 45 {
-		return &errs.Error{
-			Type: errs.PreconditionFailed,
-			Message: "The password should be more than 12 and less than 45 characters. Try again!",
-			ToRespondWith: true,
-		}
-	}
-
-	upperCount := 0
-	lowerCount := 0
-	digitsCount := 0
-	specCount := 0
-
-	allowedSymbols := "!@#$%^&*"
-
-	for _, c := range passStr {
-		switch {
-		case unicode.IsUpper(c):
-			upperCount++
-		case unicode.IsLower(c):
-			lowerCount++
-		case unicode.IsDigit(c):
-			digitsCount++
-		default:
-			if strings.ContainsRune(allowedSymbols, c) {
-				specCount++
-			} else {
-				return &errs.Error{
-					Type: errs.PreconditionFailed,
-					Message: "Invalid characters used in password. Please use only given valid characters.",
-					ToRespondWith: true,
-				}
-			}
-		}
-	}
-
-	if upperCount < 1 {
-		return &errs.Error{
-			Type: errs.PreconditionFailed,
-			Message: "No Upper characters used. Please use atleast one of all given ranges.",
-			ToRespondWith: true,
-		}
-	}
-	if lowerCount < 1 {
-		return &errs.Error{
-			Type: errs.PreconditionFailed,
-			Message: "No Lower characters used. Please use atleast one of all given ranges.",
-			ToRespondWith: true,
-		}
-	}
-	if digitsCount < 1 {
-		return &errs.Error{
-			Type: errs.PreconditionFailed,
-			Message: "No Digits used. Please use atleast one of all given ranges.",
-			ToRespondWith: true,
-		}
-	}
-	if specCount < 1 {
-		return &errs.Error{
-			Type: errs.PreconditionFailed,
-			Message: "No Special characters used. Please use atleast one of all given ranges.",
-			ToRespondWith: true,
-		}
-	}
-	fmt.Println("error")
-
-	hashed_pass, err := bcrypt.GenerateFromPassword([]byte(signupData.Password), 10)
+	cnt, err := s.queries.CheckUserExistence(ctx, signupData.ClerkID)
 	if err != nil {
-		return &errs.Error{
-			Type: errs.Internal,
-			Message: "Failed to generate hash from password : " + err.Error(),
-		}
+		return false, nil // err
 	}
-	signupData.Password = string(hashed_pass)
-	fmt.Println("error")
+
+	if cnt > 0 {
+		return false, nil
+	}
 
 	err = s.queries.SignupUser(ctx, sqlc.SignupUserParams{
 		Email: signupData.Email,
-		Password: signupData.Password,
 		Role: 1,
+		ClerkID: signupData.ClerkID,
 	})
 	if err != nil {
 		var pgerr *pgconn.PgError
 		if (errors.As(err, &pgerr)) {
 			if (pgerr.Code == errs.UniqueViolation) {
-				return &errs.Error{
+				return false, &errs.Error{
 					Type: errs.UniqueViolation,
 					Message: "User with Email-Id already exists. Try with different Id.",
 					ToRespondWith: true,
 				}		
 			}
 		}
-		return &errs.Error{
+		return false, &errs.Error{
 			Type: errs.Internal,
 			Message: "Failed to insert new user : " + err.Error(),
 		}
 	}
 	fmt.Println("error")
 
-	return nil
+	return false, nil
 }
 
 // NewService registers a new service instance for a valid user, 
@@ -368,16 +301,15 @@ func (s *PublicService) NewProject(ctx *gin.Context, userID int64, data *dto.New
 // EnableService changes the confirmation services allowed on a certain key/project.
 func (s *PublicService) ToggleService(ctx *gin.Context, userID int64, data *dto.NewProject) (*dto.APIKeyResponse, *errs.Error) {
 
-	// 1) check if service exists
-	serviceData, err := s.queries.GetServiceData(ctx, data.Name)
-	if err != nil {
-		// TODO: process pgerr
-		return nil, nil
-	}
+	fmt.Println(data.Name)
+	fmt.Println(data.Cache)
+	fmt.Println(data.Storage)
 
-	// 2) check if user is owner of service
-	if serviceData.UserID != userID {
-		return nil, nil
+
+	// 1) check if service exists
+	serviceData, errf := s.userIsServiceOwner(ctx, userID, data.Name)
+	if errf != nil {
+		return nil, errf
 	}
 
 	// 3) update requested attribute 
@@ -425,4 +357,85 @@ func (s *PublicService) DeleteService(ctx *gin.Context, userID int64, data *dto.
 	}
 
 	return nil
+}
+
+func (s *PublicService) AllProjects(ctx *gin.Context, userID int64) ([]*dto.NewProjectResp, *errs.Error) {
+
+	projsData, err := s.queries.GetAllProjects(ctx, userID)
+	if err != nil {
+		return nil, nil
+	}
+
+	resp := make([]*dto.NewProjectResp, 0)
+
+	for _, proj := range projsData {
+		resp = append(resp, &dto.NewProjectResp{
+			ServiceUUID: proj.ServiceUuid.String(),
+			ServiceName: proj.Name,
+			ServiceCreatedAt: proj.CreatedAt.Time.Unix(),
+
+			KeyInfo: &dto.APIKeyResponse{
+				ID: proj.ID.String,
+				Key: proj.Key.String,
+				CreatedAt: proj.CreatedAt.Time.Unix(),
+				ExpiresAt: proj.ExpiresAt.Int64,
+				Cache: proj.Cache.Bool,
+				Storage: proj.Storage.Bool,
+			},
+		})
+	}
+
+	return resp, nil
+}
+
+
+
+const (
+	DefaultStorageAnalyticsTimeScope int64 = 21600 // in seconds // 7 days
+	DefaultStorageAnalyticsInterval int64 = 3600 // in seconds // 24 hours		
+)
+
+
+
+func (s *PublicService) StorageData(ctx *gin.Context, userID int64, servicename string, scope, interval int64) (*dto.StorageData, *errs.Error) {
+
+	serviceData, errf := s.userIsServiceOwner(ctx, userID, servicename)
+	if errf != nil {
+		return nil, errf
+	}
+
+	data, err := s.queries.GetAllStorageData(ctx, serviceData.Sid)
+	if err != nil {
+		return nil, &errs.Error{}
+	}
+
+	if scope <= 0 || interval <= 0 {
+		scope = DefaultStorageAnalyticsTimeScope
+		interval = DefaultStorageAnalyticsInterval
+	}
+
+	xparts := (scope / interval) + 1
+	yFreq := make([]int64, xparts)	
+	xTime := make([]int64, xparts)
+	xTimeStr := make([]string, xparts)
+
+	for i := range xparts {
+		secondsInPast := ((xparts - i - 1) * DefaultStorageAnalyticsInterval)
+		xTime[i] = secondsInPast
+		xTimeStr[i] = time.Unix(time.Now().Unix() - secondsInPast, 0).Format("2006-01-02 15:04:05 MST")
+	}
+
+	for _, d := range data {
+		tSince := time.Now().Unix() - d.CreatedAt.Time.Unix()
+		yFreq[((xparts - 1) - (tSince / DefaultStorageAnalyticsInterval))]++
+	}
+
+	return &dto.StorageData{
+		Scope: scope,
+		Interval: interval,
+		XParts: xparts,
+		XTime: xTime,
+		YFreq: yFreq,
+		XTimeStr: xTimeStr,
+	}, nil
 }

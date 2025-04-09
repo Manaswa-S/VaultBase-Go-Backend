@@ -28,6 +28,14 @@ type Service struct {
 	Name        string
 }
 
+type Storage struct {
+	StrID     int64
+	ServiceID int64
+	Upload    bool
+	Download  bool
+	CreatedAt pgtype.Timestamptz
+}
+
 type User struct {
 	UserID    int64
 	Email     string

@@ -206,7 +206,6 @@ func (s *StorageService) UploadNewFile(ctx *gin.Context, apiKey string, file *mu
 			ctx.Writer.Header().Add(key, value)
 		}
 	}
-
 	_, err = io.Copy(ctx.Writer, resp.Body)
 	if err != nil {
 		return &errs.Error{
@@ -214,21 +213,15 @@ func (s *StorageService) UploadNewFile(ctx *gin.Context, apiKey string, file *mu
 			Message: "Failed to copy response into ctx writer : " + err.Error(),
 		}
 	}
-		
+
+	// update the storage analytics data
+	err = s.updateData(ctx, apiKey, true, false)
+	if err != nil {
+		return nil // err
+	}	
 
 	return nil
 }
-
-
-
-
-
-// {
-//     "message": "File uploaded successfully",
-//     "key": "d6f67dcb631d",
-//     "fileUrl": "http://service-api-q77p.onrender.com/uploads/f00cd208-fed4-4573-ae4d-b48dbf9e956b/1743828885661-movie_list.txt"
-// }
-
 
 func (s *StorageService) DownloadFile(ctx *gin.Context, apiKey string, fileKey string) *errs.Error {
 
@@ -236,21 +229,6 @@ func (s *StorageService) DownloadFile(ctx *gin.Context, apiKey string, fileKey s
 	if errf != nil {
 		return errf
 	}
-
-	fmt.Println(fileKey)
-
-	// outgoing := dto.DownloadFileOutgoing{
-	// 	UUID: userData.UserUiid.String(),
-	// 	Key: fileKey,
-	// }
-
-	// outgoingBytes, err := json.Marshal(outgoing)
-	// if err != nil {
-	// 	return &errs.Error{
-	// 		Type: errs.Internal,
-	// 		Message: "Failed to marshal outgoing download struct.",
-	// 	}
-	// }
 
 	url := fmt.Sprintf("%s%s/?uid=%s&key=%s", config.SourceBaseDomain, config.StorageDownloadURL, userData.UserUiid.String(), fileKey)
 	resp, errf := s.hitSourceURL2(ctx, "GET", url, nil)
@@ -279,5 +257,30 @@ func (s *StorageService) DownloadFile(ctx *gin.Context, apiKey string, fileKey s
 		}
 	}
 
+	// update the storage analytics data
+	err = s.updateData(ctx, apiKey, false, true)
+	if err != nil {
+		return nil // err
+	}	
+
+	return nil
+}
+
+func (s *StorageService) updateData(ctx *gin.Context, apiKey string, up, down bool) error {
+	
+	serviceID, err := s.queries.GetServiceIDFromAPIKey(ctx, apiKey)
+	if err != nil {
+		return err // err
+	}
+
+	err = s.queries.InsertStorageData(ctx, sqlc.InsertStorageDataParams{
+		ServiceID: serviceID,
+		Upload: up,
+		Download: down,
+	})
+	if err != nil {
+		return err // err
+	}	
+	
 	return nil
 }

@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/user"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"main.go/cmd"
 	"main.go/internal/handlers"
+	"main.go/internal/middlewares"
 	"main.go/internal/services"
 	apikeys "main.go/internal/utils/apiKeys"
 )
@@ -32,6 +35,15 @@ import (
     }
 
 	router := gin.Default()
+
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"}, // Allow all origins
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "clerkID", "secret_key"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 	// router.MaxMultipartMemory = 50 << 20 
 	routes(router)
 
@@ -65,8 +77,8 @@ import (
 	publicService := services.NewPublicService(queries, db, clerkClient)
 	publicHandler := handlers.NewPublicHandler(publicService)
 	publicGroup := womid.Group("/public")
+	publicGroup.Use(middlewares.ClerkAuth())
 	publicHandler.RegisterRoute(publicGroup)
-
 
 
 	cacheService := services.NewCacheService(queries, httpClient, &services.CacheSourceURL{
