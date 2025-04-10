@@ -2,6 +2,7 @@ package dto
 
 import (
 	"mime/multipart"
+	"time"
 )
 
 type Token struct {
@@ -70,6 +71,7 @@ type StorageData struct {
 	XTime []int64
 	YFreq []int64
 	XTimeStr []string
+	XTimeTime []time.Time
 }
 
 

@@ -418,16 +418,23 @@ func (s *PublicService) StorageData(ctx *gin.Context, userID int64, servicename 
 	yFreq := make([]int64, xparts)	
 	xTime := make([]int64, xparts)
 	xTimeStr := make([]string, xparts)
+	XTimeTime := make([]time.Time, xparts)
 
 	for i := range xparts {
 		secondsInPast := ((xparts - i - 1) * DefaultStorageAnalyticsInterval)
 		xTime[i] = secondsInPast
 		xTimeStr[i] = time.Unix(time.Now().Unix() - secondsInPast, 0).Format("2006-01-02 15:04:05 MST")
+		XTimeTime[i] = time.Unix(time.Now().Unix() - secondsInPast, 0)
 	}
 
 	for _, d := range data {
 		tSince := time.Now().Unix() - d.CreatedAt.Time.Unix()
-		yFreq[((xparts - 1) - (tSince / DefaultStorageAnalyticsInterval))]++
+
+		if tSince <= (scope) {
+			index := ((xparts - 1) - (tSince / DefaultStorageAnalyticsInterval))
+			// fmt.Println(index)
+			yFreq[index]++			
+		}
 	}
 
 	return &dto.StorageData{
@@ -437,5 +444,6 @@ func (s *PublicService) StorageData(ctx *gin.Context, userID int64, servicename 
 		XTime: xTime,
 		YFreq: yFreq,
 		XTimeStr: xTimeStr,
+		XTimeTime: XTimeTime,
 	}, nil
 }
