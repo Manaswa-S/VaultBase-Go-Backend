@@ -60,3 +60,18 @@ CREATE TABLE IF NOT EXISTS public.storage
         ON DELETE CASCADE
         NOT VALID
 );
+
+CREATE TABLE IF NOT EXISTS public.cache
+(
+    cch_id bigint NOT NULL DEFAULT nextval('cache_cch_id_seq'::regclass),
+    service_id bigint NOT NULL,
+    get boolean NOT NULL DEFAULT false,
+    put boolean NOT NULL DEFAULT false,
+    created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT cache_pkey PRIMARY KEY (cch_id),
+    CONSTRAINT services_cache_cch_id_fkey FOREIGN KEY (service_id)
+        REFERENCES public.services (sid) MATCH SIMPLE
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+        NOT VALID
+);

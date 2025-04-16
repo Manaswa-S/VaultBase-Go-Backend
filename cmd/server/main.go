@@ -15,7 +15,7 @@ import (
 	"main.go/internal/handlers"
 	"main.go/internal/middlewares"
 	"main.go/internal/services"
-	apikeys "main.go/internal/utils/apiKeys"
+	apikeys "main.go/internal/utils/apikeys"
 )
 
  func main() {

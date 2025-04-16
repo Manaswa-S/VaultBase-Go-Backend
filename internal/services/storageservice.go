@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -72,7 +73,15 @@ func (s *StorageService) hitSourceURL(ctx *gin.Context, method string, url strin
 	}
 
 	req.Header.Set("Content-Type", reqHeader)
-	req.Header.Set("authorization", "vaultbase1234")
+	
+	if secretKey, exists := os.LookupEnv("ServiceSecretKey"); exists {
+		req.Header.Set("authorization", secretKey)
+	} else {
+		return nil, &errs.Error{
+			Type: errs.NotFound,
+			Message: "Service secret key not found in env.",
+		}
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -217,7 +226,10 @@ func (s *StorageService) UploadNewFile(ctx *gin.Context, apiKey string, file *mu
 	// update the storage analytics data
 	err = s.updateData(ctx, apiKey, true, false)
 	if err != nil {
-		return nil // err
+		fmt.Println(errs.Error{
+			Type: errs.IncompleteAction,
+			Message: "Failed to update the storage data to analytics table : " + err.Error(),
+		})
 	}	
 
 	return nil
@@ -260,7 +272,10 @@ func (s *StorageService) DownloadFile(ctx *gin.Context, apiKey string, fileKey s
 	// update the storage analytics data
 	err = s.updateData(ctx, apiKey, false, true)
 	if err != nil {
-		return nil // err
+		fmt.Println(errs.Error{
+			Type: errs.IncompleteAction,
+			Message: "Failed to update the storage data to analytics table : " + err.Error(),
+		})
 	}	
 
 	return nil

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -23,11 +24,9 @@ func (h *CacheHandler) RegisterRoute(cacheRoute *gin.RouterGroup) {
 
 	// TODO: add a route to create a cache db first, a single user can have multiple dbs'
 
-	// This route is in itself a PUT rather than a POST but is kept POST for user simplicity, will later be changed to PUT
 	cacheRoute.POST("/put", h.PutNewCache)
-	cacheRoute.GET("/get", h.GetCache)
+	cacheRoute.GET("/get/:cacheKey", h.GetCache)
 }
-
 
 func (h *CacheHandler) PutNewCache(ctx *gin.Context) {
 
@@ -58,6 +57,7 @@ func (h *CacheHandler) PutNewCache(ctx *gin.Context) {
 		if errf.ToRespondWith {
 			ctx.JSON(http.StatusBadRequest, errf)
 		} else {
+			fmt.Println(errf.Message)
 			ctx.Set("error", errf.Message)
 		}
 		return
@@ -70,11 +70,11 @@ func (h *CacheHandler) PutNewCache(ctx *gin.Context) {
 
 func (h *CacheHandler) GetCache(ctx *gin.Context) {
 
-	cacheKey := ctx.GetHeader("Cache-Key")
+	cacheKey := ctx.Param("cacheKey")
 	if cacheKey == "" {
 		ctx.JSON(http.StatusBadRequest, errs.Error{
 			Type: errs.MissingRequiredField,
-			Message: "Missing cache key in headers (Cache-Key).",
+			Message: "Missing cache key in param (cacheKey).",
 			ToRespondWith: true,
 		})
 		return
@@ -89,18 +89,18 @@ func (h *CacheHandler) GetCache(ctx *gin.Context) {
 			ToRespondWith: true,
 		})
 		return
-	}
+	}	
 
 	errf := h.CacheService.GetCache(ctx, apiKey, cacheKey)
 	if errf != nil {
 		if errf.ToRespondWith {
 			ctx.JSON(http.StatusBadRequest, errf)
 		} else {
+			fmt.Println(errf.Message)
 			ctx.Set("error", errf.Message)
 		}
 		return
 	}
 
-	// TODO: this can and will be a problem, can cause panics, multiple response manipulations
 	ctx.Status(http.StatusOK)
 }

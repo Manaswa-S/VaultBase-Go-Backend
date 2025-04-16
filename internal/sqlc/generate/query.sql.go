@@ -45,6 +45,49 @@ func (q *Queries) DeleteService(ctx context.Context, sid int64) error {
 	return err
 }
 
+const getAllCacheData = `-- name: GetAllCacheData :many
+SELECT
+    cache.get,
+    cache.put,
+    cache.created_at
+FROM cache
+WHERE cache.service_id = $1
+AND cache.get = $2
+AND cache.put = $3
+`
+
+type GetAllCacheDataParams struct {
+	ServiceID int64
+	Get       bool
+	Put       bool
+}
+
+type GetAllCacheDataRow struct {
+	Get       bool
+	Put       bool
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetAllCacheData(ctx context.Context, arg GetAllCacheDataParams) ([]GetAllCacheDataRow, error) {
+	rows, err := q.db.Query(ctx, getAllCacheData, arg.ServiceID, arg.Get, arg.Put)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllCacheDataRow
+	for rows.Next() {
+		var i GetAllCacheDataRow
+		if err := rows.Scan(&i.Get, &i.Put, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllProjects = `-- name: GetAllProjects :many
 SELECT
     services.service_uuid,
@@ -61,6 +104,7 @@ SELECT
 FROM services
 LEFT JOIN keys ON services.key_id = keys.key_id
 WHERE services.user_id = $1
+ORDER BY services.created_at DESC
 `
 
 type GetAllProjectsRow struct {
@@ -114,7 +158,15 @@ SELECT
     storage.created_at
 FROM storage
 WHERE storage.service_id = $1
+AND storage.upload = $2
+AND storage.download = $3
 `
+
+type GetAllStorageDataParams struct {
+	ServiceID int64
+	Upload    bool
+	Download  bool
+}
 
 type GetAllStorageDataRow struct {
 	Upload    bool
@@ -122,8 +174,8 @@ type GetAllStorageDataRow struct {
 	CreatedAt pgtype.Timestamptz
 }
 
-func (q *Queries) GetAllStorageData(ctx context.Context, serviceID int64) ([]GetAllStorageDataRow, error) {
-	rows, err := q.db.Query(ctx, getAllStorageData, serviceID)
+func (q *Queries) GetAllStorageData(ctx context.Context, arg GetAllStorageDataParams) ([]GetAllStorageDataRow, error) {
+	rows, err := q.db.Query(ctx, getAllStorageData, arg.ServiceID, arg.Upload, arg.Download)
 	if err != nil {
 		return nil, err
 	}

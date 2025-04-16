@@ -8,6 +8,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Cache struct {
+	CchID     int64
+	ServiceID int64
+	Get       bool
+	Put       bool
+	CreatedAt pgtype.Timestamptz
+}
+
 type Key struct {
 	KeyID     int64
 	Key       string

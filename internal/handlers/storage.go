@@ -96,6 +96,4 @@ func (h *StorageHandler) DownloadFile(ctx *gin.Context) {
 		return
 	}
 
-
-
 }

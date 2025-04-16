@@ -3,9 +3,9 @@ package services
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
-	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -15,7 +15,7 @@ import (
 	"main.go/internal/const/errs"
 	"main.go/internal/dto"
 	sqlc "main.go/internal/sqlc/generate"
-	apikeys "main.go/internal/utils/apiKeys"
+	apikeys "main.go/internal/utils/apikeys"
 )
 
 type PublicService struct {
@@ -35,36 +35,6 @@ func NewPublicService(queries *sqlc.Queries, db *pgxpool.Pool, clerkUserClient *
 
 // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-type CreateClerk struct {
-	Email string
-	Username string
-	Password string
-}
-
-type CreatedClerk struct {
-	ID string
-	Created_At int64
-}
-
-// clerk ops
-
-func (s *PublicService) ClerkCreate(ctx *gin.Context, createData *CreateClerk) (*CreatedClerk, error) {
-
-	userData, err := s.ClerkUserClient.Create(ctx, &user.CreateParams{
-		EmailAddresses: &[]string{createData.Email},
-		Username: &createData.Username,
-		Password: &createData.Password,
-	})
-	if err != nil {
-		return nil, err
-	}	
-
-	return &CreatedClerk{
-		ID: userData.ID,
-		Created_At: userData.CreatedAt,
-	}, nil
-}
-
 
 func (s *PublicService) GetUserIDFromClerkID(ctx *gin.Context, clerkId string) (int64, error) {
 
@@ -75,22 +45,6 @@ func (s *PublicService) GetUserIDFromClerkID(ctx *gin.Context, clerkId string) (
 	}
 
 	return userID, nil
-}
-
-
-func (s *PublicService) ClerkVerify(ctx *gin.Context, clerkId string) (string, error) {
-
-	claims, ok := clerk.SessionClaimsFromContext(ctx)
-	if !ok {
-		return "", fmt.Errorf("clerk : failed to get session claims from contest")
-	}
-
-	userData, err := s.ClerkUserClient.Get(ctx, claims.Subject)
-	if err != nil {
-		return "", err
-	}
-
-	return userData.ID, nil
 }
 
 func (s *PublicService) userIsServiceOwner(ctx *gin.Context, userID int64, servicename string) (*sqlc.GetServiceDataRow, *errs.Error) {
@@ -106,6 +60,29 @@ func (s *PublicService) userIsServiceOwner(ctx *gin.Context, userID int64, servi
 		return nil, &errs.Error{}	
 	}
 	return &serviceData, nil
+}
+
+func (s *PublicService) parseScopeInterval(scopeStr, intervalStr string) (int64, int64, *errs.Error) {
+
+	scope, err := strconv.ParseInt(scopeStr, 10, 64)
+	if err != nil {
+		return 0, 0, &errs.Error{
+			Type: errs.InvalidFormat,
+			Message: "Failed to parse given scope to int64.",
+			ToRespondWith: true,
+		}
+	}
+
+	interval, err := strconv.ParseInt(intervalStr, 10, 64)
+	if err != nil {
+		return 0, 0, &errs.Error{
+			Type: errs.InvalidFormat,
+			Message: "Failed to parse given interval to int64.",
+			ToRespondWith: true,
+		}
+	}
+
+	return scope, interval, nil
 }
 
 
@@ -183,13 +160,6 @@ func (s *PublicService) NewProject(ctx *gin.Context, userID int64, data *dto.New
 		}
 	}
 
-	if !userData.Confirmed {
-		return nil, &errs.Error{
-			Type: errs.IncompleteAction,
-			Message: "Please confirm your email to proceed.",
-			ToRespondWith: true,
-		}
-	}
 	if userData.Deleted {
 		return nil, &errs.Error{
 			Type: errs.NotFound,
@@ -301,11 +271,6 @@ func (s *PublicService) NewProject(ctx *gin.Context, userID int64, data *dto.New
 // EnableService changes the confirmation services allowed on a certain key/project.
 func (s *PublicService) ToggleService(ctx *gin.Context, userID int64, data *dto.NewProject) (*dto.APIKeyResponse, *errs.Error) {
 
-	fmt.Println(data.Name)
-	fmt.Println(data.Cache)
-	fmt.Println(data.Storage)
-
-
 	// 1) check if service exists
 	serviceData, errf := s.userIsServiceOwner(ctx, userID, data.Name)
 	if errf != nil {
@@ -394,24 +359,78 @@ const (
 	DefaultStorageAnalyticsTimeScope int64 = 21600 // in seconds // 7 days
 	DefaultStorageAnalyticsInterval int64 = 3600 // in seconds // 24 hours		
 )
+const (
+	DefaultCacheAnalyticsTimeScope int64 = 21600 // in seconds // 7 days
+	DefaultCacheAnalyticsInterval int64 = 3600 // in seconds // 24 hours		
+)
 
 
+func (s *PublicService) StorageData(ctx *gin.Context, userID int64, stream string, servicename string, scopeStr, intervalStr string) (*dto.StorageData, *errs.Error) {
 
-func (s *PublicService) StorageData(ctx *gin.Context, userID int64, servicename string, scope, interval int64) (*dto.StorageData, *errs.Error) {
+	scope, interval, errf := s.parseScopeInterval(scopeStr, intervalStr)
+	if errf != nil {
+		return nil, errf
+	}
 
 	serviceData, errf := s.userIsServiceOwner(ctx, userID, servicename)
 	if errf != nil {
 		return nil, errf
 	}
 
-	data, err := s.queries.GetAllStorageData(ctx, serviceData.Sid)
+	var data []sqlc.GetAllStorageDataRow
+	var err error
+
+	// TODO: add direct range on sql using scope, WHERE AFTER scope
+
+	switch stream {
+	case "download":
+		data, err = s.queries.GetAllStorageData(ctx, sqlc.GetAllStorageDataParams{
+			ServiceID: serviceData.Sid,
+			Upload: false,
+			Download: true,
+		})
+	case "upload":
+		data, err = s.queries.GetAllStorageData(ctx, sqlc.GetAllStorageDataParams{
+			ServiceID: serviceData.Sid,
+			Upload: true,
+			Download: false,
+		})
+	case "all":
+		data, err = s.queries.GetAllStorageData(ctx, sqlc.GetAllStorageDataParams{
+			ServiceID: serviceData.Sid,
+			Upload: true,
+			Download: true,
+		})
+	default:
+		return nil, &errs.Error{
+			Type: errs.NotFound,
+			Message: "Invalid storage stream choice.",
+			ToRespondWith: true,
+		}
+	}
 	if err != nil {
-		return nil, &errs.Error{}
+		var pgerr *pgconn.PgError
+		if errors.As(err, &pgerr) {
+			if pgerr.Code != errs.NoRowsMatch {
+				return nil, &errs.Error{
+					Type: errs.Internal,
+					Message: "Failed to get storage analytics data : " + err.Error(),
+				}	
+			}
+		}
 	}
 
 	if scope <= 0 || interval <= 0 {
 		scope = DefaultStorageAnalyticsTimeScope
 		interval = DefaultStorageAnalyticsInterval
+	}
+	
+	if scope < interval {
+		return nil, &errs.Error{
+			Type: errs.InvalidFormat,
+			Message: "The scope cannot be lesser than the interval.",
+			ToRespondWith: true,
+		}
 	}
 
 	xparts := (scope / interval) + 1
@@ -420,20 +439,162 @@ func (s *PublicService) StorageData(ctx *gin.Context, userID int64, servicename 
 	xTimeStr := make([]string, xparts)
 	XTimeTime := make([]time.Time, xparts)
 
+	usrTimeZone := ctx.GetHeader("X-Timezone")
+	if usrTimeZone == "" {
+		return nil, &errs.Error{
+			Type: errs.MissingRequiredField,
+			Message: "Missing user timezone header, 'X-Timezone'.",
+			ToRespondWith: true,
+		}
+	}
+
+	usrLocation, err := time.LoadLocation(usrTimeZone)
+	if err != nil {
+		return nil, &errs.Error{
+			Type: errs.InvalidState,
+			Message: "Invalid user timezone in headers. Check IANA Time Zone database for valid choices.",
+			ToRespondWith: true,
+		}
+	}
+	usrLocalTime := time.Now().In(usrLocation)
+
 	for i := range xparts {
-		secondsInPast := ((xparts - i - 1) * DefaultStorageAnalyticsInterval)
+		secondsInPast := ((xparts - i - 1) * interval)
 		xTime[i] = secondsInPast
-		xTimeStr[i] = time.Unix(time.Now().Unix() - secondsInPast, 0).Format("2006-01-02 15:04:05 MST")
-		XTimeTime[i] = time.Unix(time.Now().Unix() - secondsInPast, 0)
+		t := usrLocalTime.Add(-time.Duration(secondsInPast) * time.Second)
+		xTimeStr[i] = t.Format("2006-01-02 15:04:05 MST")
+		XTimeTime[i] = t
 	}
 
 	for _, d := range data {
-		tSince := time.Now().Unix() - d.CreatedAt.Time.Unix()
+		tSince := usrLocalTime.Unix() - d.CreatedAt.Time.Unix()
+		if tSince <= (scope) && tSince >= 0 {
+			index := ((xparts - 1) - (tSince / interval))
+			if index >= 0 && index < xparts {
+				yFreq[index]++
+			}
+		}
+	}
 
-		if tSince <= (scope) {
-			index := ((xparts - 1) - (tSince / DefaultStorageAnalyticsInterval))
-			// fmt.Println(index)
-			yFreq[index]++			
+	return &dto.StorageData{
+		Scope: scope,
+		Interval: interval,
+		XParts: xparts,
+		XTime: xTime,
+		YFreq: yFreq,
+		XTimeStr: xTimeStr,
+		XTimeTime: XTimeTime,
+	}, nil
+}
+
+func (s *PublicService) CacheData(ctx *gin.Context, userID int64, stream string, servicename string, scopeStr, intervalStr string) (*dto.StorageData, *errs.Error) {
+
+	scope, interval, errf := s.parseScopeInterval(scopeStr, intervalStr)
+	if errf != nil {
+		return nil, errf 
+	}
+
+	serviceData, errf := s.userIsServiceOwner(ctx, userID, servicename)
+	if errf != nil {
+		return nil, errf
+	}
+
+	var data []sqlc.GetAllCacheDataRow
+	var err error
+
+	// TODO: add direct range on sql using scope, WHERE AFTER scope
+
+	switch stream {
+	case "get":
+		data, err = s.queries.GetAllCacheData(ctx, sqlc.GetAllCacheDataParams{
+			ServiceID: serviceData.Sid,
+			Get: true,
+			Put: false,
+		})
+	case "upload":
+		data, err = s.queries.GetAllCacheData(ctx, sqlc.GetAllCacheDataParams{
+			ServiceID: serviceData.Sid,
+			Get: false,
+			Put: true,
+		})
+	case "all":
+		data, err = s.queries.GetAllCacheData(ctx, sqlc.GetAllCacheDataParams{
+			ServiceID: serviceData.Sid,
+			Get: true,
+			Put: true,
+		})
+	default:
+		return nil, &errs.Error{
+			Type: errs.NotFound,
+			Message: "Invalid cache stream choice.",
+			ToRespondWith: true,
+		}
+	}
+	if err != nil {
+		var pgerr *pgconn.PgError
+		if errors.As(err, &pgerr) {
+			if pgerr.Code != errs.NoRowsMatch {
+				return nil, &errs.Error{
+					Type: errs.Internal,
+					Message: "Failed to get cache analytics data : " + err.Error(),
+				}	
+			}
+		}
+	}
+
+	if scope <= 0 || interval <= 0 {
+		scope = DefaultCacheAnalyticsTimeScope
+		interval = DefaultCacheAnalyticsInterval
+	}
+
+	if scope < interval {
+		return nil, &errs.Error{
+			Type: errs.InvalidFormat,
+			Message: "The scope cannot be lesser than the interval.",
+			ToRespondWith: true,
+		}
+	}
+
+	xparts := (scope / interval) + 1
+	yFreq := make([]int64, xparts)	
+	xTime := make([]int64, xparts)
+	xTimeStr := make([]string, xparts)
+	XTimeTime := make([]time.Time, xparts)
+
+	usrTimeZone := ctx.GetHeader("X-Timezone")
+	if usrTimeZone == "" {
+		return nil, &errs.Error{
+			Type: errs.MissingRequiredField,
+			Message: "Missing user timezone header, 'X-Timezone'.",
+			ToRespondWith: true,
+		}
+	}
+
+	usrLocation, err := time.LoadLocation(usrTimeZone)
+	if err != nil {
+		return nil, &errs.Error{
+			Type: errs.InvalidState,
+			Message: "Invalid user timezone in headers. Check IANA Time Zone database for valid choices.",
+			ToRespondWith: true,
+		}
+	}
+	usrLocalTime := time.Now().In(usrLocation)
+
+	for i := range xparts {
+		secondsInPast := ((xparts - i - 1) * interval)
+		xTime[i] = secondsInPast
+		t := usrLocalTime.Add(-time.Duration(secondsInPast) * time.Second)
+		xTimeStr[i] = t.Format("2006-01-02 15:04:05 MST")
+		XTimeTime[i] = t
+	}
+
+	for _, d := range data {
+		tSince := usrLocalTime.Unix() - d.CreatedAt.Time.Unix()
+		if tSince <= (scope) && tSince >= 0 {
+			index := ((xparts - 1) - (tSince / interval))
+			if index >= 0 && index < xparts {
+				yFreq[index]++
+			}
 		}
 	}
 

@@ -96,7 +96,8 @@ SELECT
     keys.id
 FROM services
 LEFT JOIN keys ON services.key_id = keys.key_id
-WHERE services.user_id = $1;
+WHERE services.user_id = $1
+ORDER BY services.created_at DESC;
 
 
 
@@ -162,4 +163,19 @@ SELECT
     storage.download,
     storage.created_at
 FROM storage
-WHERE storage.service_id = $1;
+WHERE storage.service_id = $1
+AND storage.upload = $2
+AND storage.download = $3;
+
+
+
+-- name: GetAllCacheData :many
+SELECT
+    cache.get,
+    cache.put,
+    cache.created_at
+FROM cache
+WHERE cache.service_id = $1
+AND cache.get = $2
+AND cache.put = $3;
+

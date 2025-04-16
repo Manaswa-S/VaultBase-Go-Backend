@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"main.go/internal/config"
@@ -71,7 +72,15 @@ func (s *CacheService) hitSourceURL(ctx *gin.Context, method string, url string,
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("authorization", "vaultbase1234")
+
+	if secretKey, exists := os.LookupEnv("ServiceSecretKey"); exists {
+		req.Header.Set("authorization", secretKey)
+	} else {
+		return nil, &errs.Error{
+			Type: errs.NotFound,
+			Message: "Service secret key not found in env.",
+		}
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {

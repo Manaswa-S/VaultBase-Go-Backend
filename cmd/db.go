@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,9 @@ func InitDB() error {
 	}
 
 	Queries = sqlc.New(PostgresPool)
-
+	err = PostgresPool.Ping(ctx)
+	if err != nil {
+		fmt.Println("DB ping failed : " + err.Error())
+	}
 	return nil
 }

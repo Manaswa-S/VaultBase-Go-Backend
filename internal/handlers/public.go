@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"main.go/internal/const/errs"
@@ -25,9 +24,6 @@ func (h *PublicHandler) RegisterRoute(publicRoute *gin.RouterGroup) {
 
 	publicRoute.POST("/newuser", h.NewUser)
 
-	// get all user dashboard data
-	// publicRoute.GET("/userdata", h.GetUserData)
-
 	// get all projects for a user
 	publicRoute.GET("/allprojects/:clerkID", h.AllProjects)
 	// to create a new project for an existing user
@@ -38,7 +34,8 @@ func (h *PublicHandler) RegisterRoute(publicRoute *gin.RouterGroup) {
 	publicRoute.POST("/deleteproject", h.DeleteService)
 
 
-	publicRoute.GET("/analytics/storage/:servicename/:scope/:interval", h.StorageAnalytics)
+	publicRoute.GET("/analytics/storage/:stream/:projectname/:scope/:interval", h.StorageAnalytics)
+	publicRoute.GET("/analytics/cache/:stream/:projectname/:scope/:interval", h.CacheAnalytics)
 }
 
 
@@ -107,8 +104,6 @@ func (h *PublicHandler) NewProject(ctx *gin.Context) {
 		return
 	}
 
-	// TODO: extract userid
-
 	clerkID, errf := h.extractClerkID(ctx)
 	if errf != nil {
 		ctx.JSON(http.StatusBadRequest, errf)
@@ -119,8 +114,6 @@ func (h *PublicHandler) NewProject(ctx *gin.Context) {
 	if err != nil {
 		return
 	}
-
-	fmt.Println(userID)
 
 	// 2) delegate to service
 	newproj, errf := h.PublicService.NewProject(ctx, userID, data)
@@ -256,8 +249,6 @@ func (h *PublicHandler) AllProjects(ctx *gin.Context) {
 		return
 	}
 
-	fmt.Println(allProjs[0])
-
 	// 3) respond appropriately
 	ctx.JSON(http.StatusOK, gin.H{
 		"allprojs": allProjs,
@@ -269,13 +260,14 @@ func (h *PublicHandler) AllProjects(ctx *gin.Context) {
 
 func (h *PublicHandler) StorageAnalytics(ctx *gin.Context) {
 
-	serviceName := ctx.Param("servicename")
+	stream := ctx.Param("stream")
+	projectName := ctx.Param("projectname")
 	scope := ctx.Param("scope")
 	interval := ctx.Param("interval")
-	if serviceName == "" || scope == "" || interval == "" {
+	if stream == "" || projectName == "" || scope == "" || interval == "" {
 		ctx.JSON(http.StatusBadRequest, errs.Error{
 			Type: errs.MissingRequiredField,
-			Message: "Missing query params 'servicename' or 'scope' or 'interval'.",
+			Message: "Missing query params 'projectName' or 'scope' or 'interval'.",
 			ToRespondWith: true,
 		})
 		return
@@ -291,17 +283,8 @@ func (h *PublicHandler) StorageAnalytics(ctx *gin.Context) {
 		return
 	}
 
-	scopeInt, err := strconv.ParseInt(scope, 10, 64)
-	if err != nil {
-		return
-	}
 
-	intervalInt, err := strconv.ParseInt(interval, 10, 64)
-	if err != nil {
-		return
-	}
-
-	resp, errf := h.PublicService.StorageData(ctx, userID, serviceName, scopeInt, intervalInt)
+	resp, errf := h.PublicService.StorageData(ctx, userID, stream, projectName, scope, interval)
 	if errf != nil {
 		if errf.ToRespondWith {
 			ctx.JSON(http.StatusBadRequest, errf)
@@ -313,6 +296,47 @@ func (h *PublicHandler) StorageAnalytics(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"storage": resp,
+	})
+
+}
+
+func (h *PublicHandler) CacheAnalytics(ctx *gin.Context) {
+
+	stream := ctx.Param("stream")
+	projectName := ctx.Param("projectname")
+	scope := ctx.Param("scope")
+	interval := ctx.Param("interval")
+	if stream == "" || projectName == "" || scope == "" || interval == "" {
+		ctx.JSON(http.StatusBadRequest, errs.Error{
+			Type: errs.MissingRequiredField,
+			Message: "Missing query params 'projectName' or 'scope' or 'interval'.",
+			ToRespondWith: true,
+		})
+		return
+	}
+
+	clerkID, errf := h.extractClerkID(ctx)
+	if errf != nil {
+		return
+	}
+
+	userID, err := h.PublicService.GetUserIDFromClerkID(ctx, clerkID)
+	if err != nil {
+		return
+	}
+
+	resp, errf := h.PublicService.CacheData(ctx, userID, stream, projectName, scope, interval)
+	if errf != nil {
+		if errf.ToRespondWith {
+			ctx.JSON(http.StatusBadRequest, errf)
+		} else {
+			fmt.Println(errf.Message)
+		}
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"cache": resp,
 	})
 
 }
