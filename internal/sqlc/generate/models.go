@@ -47,7 +47,7 @@ type Storage struct {
 type User struct {
 	UserID    int64
 	Email     string
-	Password  string
+	Password  pgtype.Text
 	Role      int64
 	UserUiid  pgtype.UUID
 	CreatedAt pgtype.Timestamptz

@@ -411,15 +411,14 @@ const insertStorageData = `-- name: InsertStorageData :exec
 
 
 
-INSERT INTO storage (service_id, upload, download, created_at) 
-VALUES ($1, $2, $3, $4)
+INSERT INTO storage (service_id, upload, download) 
+VALUES ($1, $2, $3)
 `
 
 type InsertStorageDataParams struct {
 	ServiceID int64
 	Upload    bool
 	Download  bool
-	CreatedAt pgtype.Timestamptz
 }
 
 // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -437,12 +436,7 @@ type InsertStorageDataParams struct {
 // ORDER BY storage.last_up DESC
 // LIMIT 1;
 func (q *Queries) InsertStorageData(ctx context.Context, arg InsertStorageDataParams) error {
-	_, err := q.db.Exec(ctx, insertStorageData,
-		arg.ServiceID,
-		arg.Upload,
-		arg.Download,
-		arg.CreatedAt,
-	)
+	_, err := q.db.Exec(ctx, insertStorageData, arg.ServiceID, arg.Upload, arg.Download)
 	return err
 }
 

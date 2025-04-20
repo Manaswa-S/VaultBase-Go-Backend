@@ -230,8 +230,6 @@ func (h *PublicHandler) AllProjects(ctx *gin.Context) {
 		return
 	}
 
-	fmt.Println(clerkID)
-
 	userID, err := h.PublicService.GetUserIDFromClerkID(ctx, clerkID)
 	if err != nil {
 		return

@@ -37,16 +37,19 @@ import (
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"}, // Allow all origins
+		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "clerkID", "secret_key"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "ClerkID", "SecretKey", "XTimezone", "APIKey"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 	// router.MaxMultipartMemory = 50 << 20 
-	routes(router)
-
+	if err := routes(router); err != nil {
+		fmt.Println(err)
+		return
+	}
+	
 	err = router.Run(os.Getenv("PORT"))
 	if err != nil {
 		fmt.Printf("Error running router : %v", err)
@@ -55,7 +58,6 @@ import (
  }
 
  func routes(router *gin.Engine) error {
-
 
 	// TODO: give proper names for groups
 	womid := router.Group("")
@@ -96,7 +98,6 @@ import (
 	storageHandler := handlers.NewStorageHandler(storageService)
 	storageGroup := wmid.Group("/storage")
 	storageHandler.RegisterRoute(storageGroup)
-
 
 
 	return nil

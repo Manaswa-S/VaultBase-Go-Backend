@@ -52,12 +52,19 @@ func (s *PublicService) userIsServiceOwner(ctx *gin.Context, userID int64, servi
 	serviceData, err := s.queries.GetServiceData(ctx, servicename)
 	if err != nil {
 		// TODO: process pgerr
-		return nil, &errs.Error{}
+		return nil, &errs.Error{
+			Type: errs.Internal,
+			Message: "Failed to get service data from db : " + err.Error(),
+		}
 	}	
 
 	// 2) check if user is owner of service
 	if serviceData.UserID != userID {
-		return nil, &errs.Error{}	
+		return nil, &errs.Error{
+			Type: errs.Unauthorized,
+			Message: "You are not the owner of this service and hence unauthorized.",
+			ToRespondWith: true,
+		}	
 	}
 	return &serviceData, nil
 }
@@ -439,11 +446,11 @@ func (s *PublicService) StorageData(ctx *gin.Context, userID int64, stream strin
 	xTimeStr := make([]string, xparts)
 	XTimeTime := make([]time.Time, xparts)
 
-	usrTimeZone := ctx.GetHeader("X-Timezone")
+	usrTimeZone := ctx.GetHeader("XTimezone")
 	if usrTimeZone == "" {
 		return nil, &errs.Error{
 			Type: errs.MissingRequiredField,
-			Message: "Missing user timezone header, 'X-Timezone'.",
+			Message: "Missing user timezone header, 'XTimezone'.",
 			ToRespondWith: true,
 		}
 	}
@@ -511,7 +518,7 @@ func (s *PublicService) CacheData(ctx *gin.Context, userID int64, stream string,
 			Get: true,
 			Put: false,
 		})
-	case "upload":
+	case "put":
 		data, err = s.queries.GetAllCacheData(ctx, sqlc.GetAllCacheDataParams{
 			ServiceID: serviceData.Sid,
 			Get: false,
@@ -561,11 +568,11 @@ func (s *PublicService) CacheData(ctx *gin.Context, userID int64, stream string,
 	xTimeStr := make([]string, xparts)
 	XTimeTime := make([]time.Time, xparts)
 
-	usrTimeZone := ctx.GetHeader("X-Timezone")
+	usrTimeZone := ctx.GetHeader("XTimezone")
 	if usrTimeZone == "" {
 		return nil, &errs.Error{
 			Type: errs.MissingRequiredField,
-			Message: "Missing user timezone header, 'X-Timezone'.",
+			Message: "Missing user timezone header, 'XTimezone'.",
 			ToRespondWith: true,
 		}
 	}

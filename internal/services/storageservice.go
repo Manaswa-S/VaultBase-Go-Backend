@@ -113,8 +113,15 @@ func (s *StorageService) hitSourceURL2(ctx *gin.Context, method string, url stri
 		}
 	}
 
-	req.Header.Set("authorization", "vaultbase1234")
-
+	if secretKey, exists := os.LookupEnv("ServiceSecretKey"); exists {
+		req.Header.Set("authorization", secretKey)
+	} else {
+		return nil, &errs.Error{
+			Type: errs.NotFound,
+			Message: "Service secret key not found in env.",
+		}
+	}
+	
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		fmt.Println(err)

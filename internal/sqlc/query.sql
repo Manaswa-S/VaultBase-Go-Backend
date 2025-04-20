@@ -153,8 +153,8 @@ WHERE keys.key = $1;
 
 
 -- name: InsertStorageData :exec
-INSERT INTO storage (service_id, upload, download, created_at) 
-VALUES ($1, $2, $3, $4);
+INSERT INTO storage (service_id, upload, download) 
+VALUES ($1, $2, $3);
 
 
 -- name: GetAllStorageData :many

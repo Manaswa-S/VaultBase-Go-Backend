@@ -28,7 +28,7 @@ func (h *StorageHandler) RegisterRoute(storageRoute *gin.RouterGroup) {
 func (h *StorageHandler) UploadNewFile(ctx *gin.Context) {
 
 	// get api key
-	apiKey := ctx.GetHeader("API-Key")
+	apiKey := ctx.GetHeader("APIKey")
 	if apiKey == "" {
 		ctx.JSON(http.StatusUnauthorized, errs.Error{
 			Type: errs.MissingRequiredField,
@@ -64,7 +64,7 @@ func (h *StorageHandler) UploadNewFile(ctx *gin.Context) {
 func (h *StorageHandler) DownloadFile(ctx *gin.Context) {
 
 	// get api key
-	apiKey := ctx.GetHeader("API-Key")
+	apiKey := ctx.GetHeader("APIKey")
 	if apiKey == "" {
 		ctx.JSON(http.StatusUnauthorized, errs.Error{
 			Type: errs.MissingRequiredField,

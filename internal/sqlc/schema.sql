@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS public.users
 (
     user_id bigint NOT NULL DEFAULT nextval('users_user_id_seq'::regclass),
     email text NOT NULL,
-    password text NOT NULL,
+    password text,
     role bigint NOT NULL,
     user_uiid uuid NOT NULL DEFAULT gen_random_uuid(),
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,

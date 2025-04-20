@@ -1,2 +1,2 @@
 .env
-.builds/all/*
+/builds/all/

@@ -42,7 +42,7 @@ func (h *CacheHandler) PutNewCache(ctx *gin.Context) {
 	}
 
 	// get api key
-	apiKey := ctx.GetHeader("API-Key")
+	apiKey := ctx.GetHeader("APIKey")
 	if apiKey == "" {
 		ctx.JSON(http.StatusUnauthorized, errs.Error{
 			Type: errs.MissingRequiredField,
@@ -81,7 +81,7 @@ func (h *CacheHandler) GetCache(ctx *gin.Context) {
 	}
 
 	// get api key
-	apiKey := ctx.GetHeader("API-Key")
+	apiKey := ctx.GetHeader("APIKey")
 	if apiKey == "" {
 		ctx.JSON(http.StatusUnauthorized, errs.Error{
 			Type: errs.MissingRequiredField,
